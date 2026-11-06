@@ -3,6 +3,7 @@ import json
 import pika
 from shared.rabbit_client import conectar_rabbitmq
 from shared.db_session import SessionLocal
+from shared.notificaciones import declarar_topologia, publicar_notificacion
 from worker_rds.handlers.oooi_handler import procesar_evento_oooi
 from worker_rds.handlers.posicion_handler import procesar_posicion_aeronave
 from worker_rds.handlers.clima_handler import procesar_observacion_clima
@@ -29,7 +30,11 @@ def callback(ch, method, properties, body):
 
         # Enrutamiento dinámico según el tipo de mensaje
         if "codigo_evento" in payload or "id_externo_evento" in payload:
-            resultado = procesar_evento_oooi(payload, db)
+            # Las notificaciones (cancelación, retraso, conexión, reubicación) salen por el mismo canal.
+            def publicar(routing_key, datos):
+                publicar_notificacion(ch, routing_key, datos)
+
+            resultado = procesar_evento_oooi(payload, db, publicar=publicar)
             tipo_msg = f"OOOI ({payload.get('codigo_evento')})"
         elif "id_externo_posicion" in payload or ("latitud" in payload and "longitud" in payload):
             resultado = procesar_posicion_aeronave(payload, db)
@@ -58,6 +63,11 @@ def main():
     print("[Worker RDS] Iniciando servicio consumidor RDS...", flush=True)
     connection = conectar_rabbitmq()
     channel = connection.channel()
+
+    # Exchange y cola de notificaciones a pasajeros (ver shared/notificaciones.py).
+    declarar_topologia(channel)
+    # Publisher confirms: cada publicación espera el ACK del broker antes de continuar.
+    channel.confirm_delivery()
 
     for queue_name in QUEUES:
         channel.queue_declare(queue=queue_name, durable=True)

@@ -1,0 +1,39 @@
+{
+  "family": "vueladata-worker-notificaciones-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "worker-notificaciones",
+      "image": "<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/vueladata/backend-workers:latest",
+      "essential": true,
+      "command": ["python", "-m", "worker_notificaciones.main"],
+      "environment": [
+        {"name": "RABBITMQ_HOST", "value": "rabbitmq.vueladata.local"},
+        {"name": "RABBITMQ_PORT", "value": "5672"},
+        {"name": "SMTP_HOST", "value": "smtp.gmail.com"},
+        {"name": "SMTP_PORT", "value": "587"},
+        {"name": "EMAIL_DESTINO_PRUEBAS", "value": "<CORREO_DEL_EQUIPO>"}
+      ],
+      "secrets": [
+        {"name": "RABBITMQ_USER", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/user"},
+        {"name": "RABBITMQ_PASS", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/password"},
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database_url"},
+        {"name": "SMTP_USUARIO", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/smtp/usuario"},
+        {"name": "SMTP_CLAVE", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/smtp/clave"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/vueladata-worker-notificaciones",
+          "awslogs-create-group": "true",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "worker-notificaciones"
+        }
+      }
+    }
+  ]
+}

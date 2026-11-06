@@ -6,7 +6,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![uv](https://img.shields.io/badge/Package_Manager-uv-blueviolet.svg)](https://github.com/astral-sh/uv)
-[![Tests](https://img.shields.io/badge/Tests-13%20Passed-brightgreen.svg)]()
+[![Tests](<https://img.shields.io/badge/Tests-13%20Passed-brightgreen.svg>)]()
 
 Servicio web operacional REST perteneciente a la plataforma de datos de la aerolínea regional **VuelaData**. Este microservicio corresponde a la **Fuente F7**, encargada de la simulación de la pasarela de pagos asíncrona, el registro de incidencias y el cálculo y gestión de compensaciones económicas a pasajeros afectados por retrasos o cancelaciones.
 
@@ -94,11 +94,10 @@ docker compose up -d --build
 
 ### Servicios expuestos:
 
-
-| Servicio       | Contenedor         | Puerto Local | Descripción                      |
-| ---------------- | -------------------- | :------------: | ----------------------------------- |
-| **API REST**   | `vueladata_f7_api` |    `8000`    | Servidor FastAPI Uvicorn          |
-| **PostgreSQL** | `vueladata_pg_dev` |    `5433`    | Motor de base de datos relacional |
+| Servicio             | Contenedor           | Puerto Local | Descripción                      |
+| -------------------- | -------------------- | :----------: | --------------------------------- |
+| **API REST**   | `vueladata_f7_api` |   `8000`   | Servidor FastAPI Uvicorn          |
+| **PostgreSQL** | `vueladata_pg_dev` |   `5433`   | Motor de base de datos relacional |
 
 * **Documentación interactiva (Swagger UI):** [http://localhost:8000/docs](http://localhost:8000/docs)
 * **Especificación OpenAPI (JSON):** [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
@@ -168,21 +167,78 @@ Cobertura de pruebas:
 
 ## 📌 Endpoints Principales
 
-
-| Recurso            | Método | Endpoint                      | Descripción                             |    Códigos HTTP    |
-| -------------------- | :--------: | ------------------------------- | ------------------------------------------ | :-------------------: |
-| **Health**         |  `GET`  | `/health`                     | Estado del contenedor de la API          |        `200`        |
-| **Health**         |  `GET`  | `/health/db`                  | Conectividad contra PostgreSQL           |    `200`, `503`    |
-| **Causas**         |  `GET`  | `/causas/`                    | Listar catálogo de causas operacionales |        `200`        |
+| Recurso                  |  Método  | Endpoint                        | Descripción                             |       Códigos HTTP       |
+| ------------------------ | :--------: | ------------------------------- | ---------------------------------------- | :-----------------------: |
+| **Health**         |  `GET`  | `/health`                     | Estado del contenedor de la API          |          `200`          |
+| **Health**         |  `GET`  | `/health/db`                  | Conectividad contra PostgreSQL           |     `200`, `503`     |
+| **Causas**         |  `GET`  | `/causas/`                    | Listar catálogo de causas operacionales |          `200`          |
 | **Causas**         |  `POST`  | `/causas/`                    | Registrar nueva causa (RN-03)            | `201`, `400`, `422` |
-| **Causas**         |  `GET`  | `/causas/{id}`                | Consultar causa por identificador        |    `200`, `404`    |
+| **Causas**         |  `GET`  | `/causas/{id}`                | Consultar causa por identificador        |     `200`, `404`     |
 | **Causas**         | `PATCH` | `/causas/{id}`                | Actualización parcial de causa          | `200`, `404`, `400` |
-| **Causas**         | `DELETE` | `/causas/{id}`                | Eliminar causa                           |    `204`, `404`    |
-| **Reglas**         |  `GET`  | `/reglas-compensacion/`       | Listar reglas y porcentajes (RN-05)      |        `200`        |
-| **Reglas**         |  `POST`  | `/reglas-compensacion/`       | Crear nueva regla de compensación       |    `201`, `422`    |
-| **Compensaciones** |  `GET`  | `/compensaciones/`            | Consultar compensaciones económicas     |        `200`        |
+| **Causas**         | `DELETE` | `/causas/{id}`                | Eliminar causa                           |     `204`, `404`     |
+| **Reglas**         |  `GET`  | `/reglas-compensacion/`       | Listar reglas y porcentajes (RN-05)      |          `200`          |
+| **Reglas**         |  `POST`  | `/reglas-compensacion/`       | Crear nueva regla de compensación       |     `201`, `422`     |
+| **Compensaciones** |  `GET`  | `/compensaciones/`            | Consultar compensaciones económicas     |          `200`          |
 | **Compensaciones** |  `POST`  | `/compensaciones/`            | Generar compensación para un segmento   | `201`, `400`, `422` |
-| **Pagos**          |  `GET`  | `/pagos/`                     | Listar solicitudes de desembolso F7      |        `200`        |
+| **Pagos**          |  `GET`  | `/pagos/`                     | Listar solicitudes de desembolso F7      |          `200`          |
 | **Pagos**          |  `POST`  | `/pagos/`                     | Iniciar pago con clave de idempotencia   | `201`, `400`, `404` |
-| **Pagos**          |  `GET`  | `/pagos/idempotencia/{clave}` | Consultar pago por clave idempotente     |    `200`, `404`    |
+| **Pagos**          |  `GET`  | `/pagos/idempotencia/{clave}` | Consultar pago por clave idempotente     |     `200`, `404`     |
 | **Eventos Pago**   |  `POST`  | `/eventos-pago/`              | Webhook asíncrono de confirmación F7   | `201`, `400`, `404` |
+
+---
+
+## 📧 Notificaciones por Correo a Pasajeros (RabbitMQ + Gmail)
+
+Cuando pasa algo con un vuelo, `worker_rds` publica un mensaje y `worker_notificaciones` envía el correo a cada pasajero afectado.
+
+```text
+simulate_stream.py ──> q_rds_writer ──> worker_rds (guarda el evento en RDS)
+                                            │ después del commit publica en:
+                                            ▼
+                         exchange "vueladata.notificaciones" (topic, durable)
+                                            │ routing keys
+                                            ▼
+                         cola "q.notificaciones_email" (durable)
+                                            ▼
+                         worker_notificaciones ──> tabla notificacion + correo (Gmail SMTP)
+```
+
+| Routing key | Cuándo lo publica `worker_rds` | Correo que recibe el pasajero | `notificacion.tipo` |
+| --- | --- | --- | --- |
+| `vuelo.cancelado` | Llega un evento `CANCEL` | "Tu vuelo X fue cancelado" + sus derechos (RN-05/RN-06) | `INTERRUPCION` |
+| `vuelo.retrasado` | Evento `OUT` con retraso ≥ `UMBRAL_RETRASO_NOTIFICACION_MIN` (120) | "Tu vuelo X tiene un retraso de N h M min" | `INTERRUPCION` |
+| `conexion.en_riesgo` | Un retraso deja una conexión por debajo del tiempo mínimo (RN-07) | "Tu conexión en BOG está en riesgo" o "Perdiste tu conexión" | `CONEXION_RIESGO` |
+| `itinerario.cambiado` | Tras una cancelación se ofrece el siguiente vuelo de la misma ruta | "Te ofrecemos un nuevo vuelo" + cómo aceptarlo en la API de pasajeros | `REUBICACION` |
+
+### Garantías
+
+* **Mensajes persistentes** (`delivery_mode=2`) en exchange y cola durables: sobreviven a un reinicio de RabbitMQ.
+* **Publisher confirms**: `worker_rds` usa `confirm_delivery()`, así que cada publicación espera el ACK del broker.
+* **Se publica después del commit**: nunca se avisa de algo que no quedó guardado. Si RabbitMQ falla al publicar, el evento igual queda guardado y el error queda en el log.
+* **Sin correos duplicados**: un evento repetido se descarta en `worker_rds` (RN-09) y, si RabbitMQ entrega dos veces el mismo mensaje, `worker_notificaciones` encuentra la notificación ya `ENVIADA` y no la vuelve a mandar.
+* **Fallos de Gmail**: la notificación queda `FALLIDA` en la tabla y se reintenta si el mensaje vuelve a llegar.
+* **ACK manual** y `prefetch=1` en el worker de correos.
+
+### Configurar Gmail
+
+1. Activa la verificación en dos pasos en la cuenta de Gmail del equipo.
+2. Crea una **contraseña de aplicación** en <https://myaccount.google.com/apppasswords>.
+3. En `.env`: `SMTP_USUARIO`, `SMTP_CLAVE` (la contraseña de aplicación) y `EMAIL_DESTINO_PRUEBAS`.
+
+> ⚠️ **Deja `EMAIL_DESTINO_PRUEBAS` con el correo del equipo.** Los correos del seed son inventados: si se envían de verdad, Gmail recibe rebotes y puede bloquear la cuenta. En modo pruebas todos los correos llegan a ese buzón e indican para quién eran. Gmail también limita los envíos diarios (~500 para cuentas personales).
+
+### Ejecutar
+
+```bash
+uv run python -m worker_rds.main                # consume eventos y publica notificaciones
+uv run python -m worker_notificaciones.main     # envía los correos
+uv run python simulate_stream.py                # el último vuelo simulado se cancela
+```
+
+En AWS se despliega con `task-definition-worker-notificaciones.json` (las credenciales SMTP salen de SSM Parameter Store, no del archivo).
+
+### Pruebas
+
+```bash
+uv run pytest tests/workers -v   # no necesita PostgreSQL, RabbitMQ ni Gmail
+```

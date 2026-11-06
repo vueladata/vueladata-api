@@ -1,18 +1,33 @@
 import json
+import os
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
+from shared.models.estado_vuelo import EstadoVuelo
 from shared.models.evento_operacional import EventoOperacional
 from shared.models.vuelo import Vuelo
 from shared.models.incidencia_vuelo import IncidenciaVuelo
+from shared.notificaciones import CONEXION_EN_RIESGO, ITINERARIO_CAMBIADO, VUELO_CANCELADO, VUELO_RETRASADO
 from worker_rds.business_rules import resolver_causa
+from worker_rds.handlers.pasajeros_afectados import en_utc, evaluar_conexiones, ofrecer_reubicaciones
 
-CODIGOS_VALIDOS = {"OUT", "OFF", "ON", "IN"}
+# OUT/OFF/ON/IN = eventos OOOI. CANCEL = el vuelo se canceló.
+CODIGOS_VALIDOS = {"OUT", "OFF", "ON", "IN", "CANCEL"}
 
-def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
+# Código del estado "cancelado" en la tabla estado_vuelo (debe coincidir con el seed).
+CODIGO_ESTADO_CANCELADO = os.getenv("CODIGO_ESTADO_CANCELADO", "CANCELADO")
+
+# A partir de cuántos minutos de retraso se avisa al pasajero por correo.
+UMBRAL_RETRASO_NOTIFICACION_MIN = int(os.getenv("UMBRAL_RETRASO_NOTIFICACION_MIN", "120"))
+
+
+def procesar_evento_oooi(body: bytes | str | dict, db: Session, publicar=None) -> str:
     """
-    Procesa un evento OOOI (OUT, OFF, ON, IN) originado por el simulador de vuelos.
-    
+    Procesa un evento OOOI (OUT, OFF, ON, IN) o una cancelación (CANCEL) originado por el simulador.
+
+    publicar: función opcional publicar(routing_key, datos) para enviar notificaciones a RabbitMQ.
+    Las notificaciones se publican DESPUÉS del commit, para no avisar de algo que no quedó guardado.
+
     Retorna:
       - 'ok': procesado y persistido correctamente.
       - 'duplicado': ya existía en la base de datos (RN-09 idempotencia).
@@ -32,6 +47,7 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
         return "invalido"
 
     # ── 2. Idempotencia (RN-09) ───────────────────────────────────────
+    # Un evento repetido se descarta aquí, así que tampoco se vuelve a notificar.
     existente = (
         db.query(EventoOperacional)
         .filter_by(id_externo_evento=str(id_externo))
@@ -65,10 +81,16 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
 
     ahora_utc = datetime.now(timezone.utc)
 
+    estado_cancelado = None
+    if codigo_evento == "CANCEL":
+        estado_cancelado = db.query(EstadoVuelo).filter_by(codigo=CODIGO_ESTADO_CANCELADO).first()
+        if estado_cancelado is None:
+            print(f"[Worker RDS] ⚠️ No existe el estado '{CODIGO_ESTADO_CANCELADO}' en estado_vuelo.", flush=True)
+
     # ── 4. Insertar en evento_operacional ─────────────────────────────
     nuevo_evento = EventoOperacional(
         id_vuelo=int(id_vuelo),
-        id_estado_vuelo=1,  # Programado / En Progreso
+        id_estado_vuelo=estado_cancelado.id_estado_vuelo if estado_cancelado else 1,  # 1 = Programado / En Progreso
         fecha_hora_evento_utc=fecha_evento,
         fecha_hora_recepcion_utc=ahora_utc,
         codigo_evento=codigo_evento,
@@ -81,10 +103,17 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
     db.add(nuevo_evento)
     db.flush()  # Para obtener el id_evento si se requiere FK
 
+    # Notificaciones a publicar cuando el commit termine: lista de (routing_key, datos).
+    notificaciones = []
+
     # ── 5. Actualizar tiempos reales en vuelo e incidencia ─────────────
     if estado_validacion == "VALIDO":
         vuelo = db.query(Vuelo).filter_by(id_vuelo=int(id_vuelo)).first()
-        if vuelo:
+        if vuelo and codigo_evento == "CANCEL":
+            notificaciones = procesar_cancelacion(
+                db, vuelo, nuevo_evento, id_causa, es_imputable, estado_cancelado, fecha_evento, ahora_utc
+            )
+        elif vuelo:
             campo_map = {
                 "OUT": "salida_real_puerta_utc",
                 "OFF": "despegue_real_utc",
@@ -95,16 +124,14 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
             if campo_a_actualizar:
                 setattr(vuelo, campo_a_actualizar, fecha_evento)
 
-            # Si es OUT y tiene retraso significativo con causa, registrar incidencia
-            if codigo_evento == "OUT" and id_causa:
+            if codigo_evento == "OUT":
                 minutos_retraso = 0
                 if vuelo.salida_programada_utc:
-                    prog = vuelo.salida_programada_utc
-                    if prog.tzinfo is None:
-                        prog = prog.replace(tzinfo=timezone.utc)
+                    prog = en_utc(vuelo.salida_programada_utc)
                     minutos_retraso = max(0, int((fecha_evento - prog).total_seconds() / 60))
 
-                if minutos_retraso > 0:
+                # Si tiene retraso con causa, registrar incidencia
+                if minutos_retraso > 0 and id_causa:
                     incidencia = IncidenciaVuelo(
                         id_vuelo=vuelo.id_vuelo,
                         id_evento_origen=nuevo_evento.id_evento,
@@ -118,5 +145,77 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session) -> str:
                     )
                     db.add(incidencia)
 
+                if minutos_retraso > 0:
+                    notificaciones = procesar_retraso(
+                        db, vuelo, minutos_retraso, codigo_causa, es_imputable, fecha_evento, ahora_utc
+                    )
+
     db.commit()
+
+    # ── 6. Avisar a los pasajeros (solo cuando todo quedó guardado) ────
+    if publicar is not None:
+        for routing_key, datos in notificaciones:
+            try:
+                publicar(routing_key, datos)
+            except Exception as e:
+                # El evento ya está guardado: no lo devolvemos a la cola por un fallo al notificar.
+                print(f"[Worker RDS] ⚠️ No se pudo publicar la notificación {routing_key}: {e}", flush=True)
+
     return "ok"
+
+
+def procesar_cancelacion(db, vuelo, evento, id_causa, es_imputable, estado_cancelado, fecha_evento, ahora_utc):
+    """Marca el vuelo como cancelado, registra la incidencia y ofrece reubicaciones. Devuelve las notificaciones."""
+    if estado_cancelado is not None:
+        vuelo.id_estado_vuelo_actual = estado_cancelado.id_estado_vuelo
+
+    notificaciones = [
+        (VUELO_CANCELADO, {
+            "id_vuelo": vuelo.id_vuelo,
+            "fecha_evento_utc": fecha_evento.isoformat(),
+            "codigo_causa": evento.codigo_causa_original,
+            "es_imputable": es_imputable,
+        })
+    ]
+
+    # La incidencia (y por tanto la reubicación) necesita una causa válida.
+    if id_causa:
+        incidencia = IncidenciaVuelo(
+            id_vuelo=vuelo.id_vuelo,
+            id_evento_origen=evento.id_evento,
+            id_causa=id_causa,
+            tipo="CANCELACION",
+            minutos_retraso=None,
+            es_causa_principal=True,
+            requiere_auditoria=False,
+            estado_revision="PENDIENTE",
+            fecha_clasificacion_utc=ahora_utc,
+        )
+        db.add(incidencia)
+        db.flush()
+
+        id_estado_cancelado = estado_cancelado.id_estado_vuelo if estado_cancelado else None
+        for reubicacion in ofrecer_reubicaciones(db, vuelo, incidencia, id_estado_cancelado, ahora_utc):
+            if reubicacion.estado == "OFRECIDA":
+                notificaciones.append((ITINERARIO_CAMBIADO, {"id_reubicacion": reubicacion.id_reubicacion}))
+
+    return notificaciones
+
+
+def procesar_retraso(db, vuelo, minutos_retraso, codigo_causa, es_imputable, fecha_evento, ahora_utc):
+    """Evalúa las conexiones afectadas por el retraso (RN-07). Devuelve las notificaciones."""
+    notificaciones = []
+
+    if minutos_retraso >= UMBRAL_RETRASO_NOTIFICACION_MIN:
+        notificaciones.append((VUELO_RETRASADO, {
+            "id_vuelo": vuelo.id_vuelo,
+            "fecha_evento_utc": fecha_evento.isoformat(),
+            "minutos_retraso": minutos_retraso,
+            "codigo_causa": codigo_causa,
+            "es_imputable": es_imputable,
+        }))
+
+    for evaluacion in evaluar_conexiones(db, vuelo, minutos_retraso, ahora_utc):
+        notificaciones.append((CONEXION_EN_RIESGO, {"id_evaluacion": evaluacion.id_evaluacion}))
+
+    return notificaciones

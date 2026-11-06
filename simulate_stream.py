@@ -49,6 +49,22 @@ def simular_eventos(cantidad_vuelos: int = 5, delay_segundos: float = 0.5):
         # 1. Simular Eventos OOOI
         for i in range(1, cantidad_vuelos + 1):
             t_base = ahora + timedelta(minutes=i * 10)
+
+            # El último vuelo se cancela: genera el correo de cancelación y el de reubicación.
+            if i == cantidad_vuelos:
+                msg = {
+                    "id_externo_evento": str(uuid.uuid4()),
+                    "id_vuelo": i,
+                    "numero_vuelo": f"VU-{1000 + i}",
+                    "codigo_evento": "CANCEL",
+                    "fecha_hora_evento_utc": ahora.isoformat(),
+                    "codigo_causa_original": "TECNICA",
+                }
+                publicar(ch, msg)
+                total_enviados += 1
+                print(f"[>] CANCEL | Vuelo VU-{1000 + i} [id_vuelo={i}] (Causa: TECNICA)")
+                continue
+
             es_retrasado = random.choice([True, False])
             minutos_retraso = random.randint(20, 150) if es_retrasado else 0
             causa = random.choice(CAUSAS) if es_retrasado else None
