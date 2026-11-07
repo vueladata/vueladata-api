@@ -5,7 +5,6 @@
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/vueladata-worker-rds-role",
   "containerDefinitions": [
     {
       "name": "worker-rds",
@@ -15,21 +14,23 @@
       "environment": [
         {"name": "RABBITMQ_HOST", "value": "rabbitmq.vueladata.local"},
         {"name": "RABBITMQ_PORT", "value": "5672"},
-        {"name": "RABBITMQ_USER", "value": "admin"},
-        {"name": "RABBITMQ_PASS", "value": "admin123"},
         {"name": "QUEUE_RDS", "value": "q.rds_writer"},
-        {"name": "PREFETCH_COUNT", "value": "10"},
-        {"name": "DATABASE_URL", "value": "postgresql+psycopg://postgres:<PASSWORD>@<RDS_ENDPOINT>:5432/vueladata"}
+        {"name": "PREFETCH_COUNT", "value": "10"}
+      ],
+      "secrets": [
+        {"name": "RABBITMQ_USER", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/user"},
+        {"name": "RABBITMQ_PASS", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/password"},
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database_url"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/vueladata-worker-rds",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "worker-rds"
+          "awslogs-stream-prefix": "worker-rds",
+          "awslogs-create-group": "true"
         }
       }
     }
   ]
 }
-

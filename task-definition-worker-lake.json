@@ -5,7 +5,6 @@
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/vueladata-worker-lake-role",
   "containerDefinitions": [
     {
       "name": "worker-lake",
@@ -15,8 +14,6 @@
       "environment": [
         {"name": "RABBITMQ_HOST", "value": "rabbitmq.vueladata.local"},
         {"name": "RABBITMQ_PORT", "value": "5672"},
-        {"name": "RABBITMQ_USER", "value": "admin"},
-        {"name": "RABBITMQ_PASS", "value": "admin123"},
         {"name": "QUEUE_LAKE", "value": "q.lake_writer"},
         {"name": "PREFETCH_COUNT", "value": "100"},
         {"name": "AWS_REGION", "value": "us-east-1"},
@@ -25,15 +22,19 @@
         {"name": "LAKE_FLUSH_EVERY_SECONDS", "value": "60"},
         {"name": "LOCAL_LAKE_FALLBACK", "value": "false"}
       ],
+      "secrets": [
+        {"name": "RABBITMQ_USER", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/user"},
+        {"name": "RABBITMQ_PASS", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/password"}
+      ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/vueladata-worker-lake",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "worker-lake"
+          "awslogs-stream-prefix": "worker-lake",
+          "awslogs-create-group": "true"
         }
       }
     }
   ]
 }
-

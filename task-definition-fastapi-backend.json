@@ -5,7 +5,6 @@
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/vueladata-fastapi-backend-role",
   "containerDefinitions": [
     {
       "name": "fastapi-backend",
@@ -20,17 +19,20 @@
       ],
       "command": ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],
       "environment": [
-        {"name": "DATABASE_URL", "value": "postgresql+psycopg://postgres:<PASSWORD>@<RDS_ENDPOINT>:5432/vueladata"}
+        {"name": "PORT", "value": "8000"}
+      ],
+      "secrets": [
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database_url"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/vueladata-fastapi-backend",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "fastapi"
+          "awslogs-stream-prefix": "fastapi",
+          "awslogs-create-group": "true"
         }
       }
     }
   ]
 }
-
