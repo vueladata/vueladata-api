@@ -7,8 +7,9 @@ from shared.models.estado_vuelo import EstadoVuelo
 from shared.models.evento_operacional import EventoOperacional
 from shared.models.vuelo import Vuelo
 from shared.models.incidencia_vuelo import IncidenciaVuelo
+from shared.models.auditoria_causa import AuditoriaCausa
 from shared.notificaciones import CONEXION_EN_RIESGO, ITINERARIO_CAMBIADO, VUELO_CANCELADO, VUELO_RETRASADO
-from worker_rds.business_rules import resolver_causa
+from worker_rds.business_rules import evaluar_auditoria_climatica, resolver_causa
 from worker_rds.handlers.pasajeros_afectados import en_utc, evaluar_conexiones, ofrecer_reubicaciones
 
 # OUT/OFF/ON/IN = eventos OOOI. CANCEL = el vuelo se canceló.
@@ -132,6 +133,9 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session, publicar=None) -
 
                 # Si tiene retraso con causa, registrar incidencia
                 if minutos_retraso > 0 and id_causa:
+                    requiere_auditoria, obs_origen, obs_destino = evaluar_auditoria_climatica(
+                        db, vuelo.id_ruta, fecha_evento, codigo_causa
+                    )
                     incidencia = IncidenciaVuelo(
                         id_vuelo=vuelo.id_vuelo,
                         id_evento_origen=nuevo_evento.id_evento,
@@ -139,11 +143,16 @@ def procesar_evento_oooi(body: bytes | str | dict, db: Session, publicar=None) -
                         tipo="RETRASO",
                         minutos_retraso=minutos_retraso,
                         es_causa_principal=True,
-                        requiere_auditoria=False,
+                        requiere_auditoria=requiere_auditoria,
                         estado_revision="PENDIENTE",
                         fecha_clasificacion_utc=ahora_utc,
                     )
                     db.add(incidencia)
+                    if requiere_auditoria:
+                        db.flush()
+                        _registrar_auditoria_climatica(
+                            db, incidencia, obs_origen, obs_destino, ahora_utc
+                        )
 
                 if minutos_retraso > 0:
                     notificaciones = procesar_retraso(
@@ -180,6 +189,9 @@ def procesar_cancelacion(db, vuelo, evento, id_causa, es_imputable, estado_cance
 
     # La incidencia (y por tanto la reubicación) necesita una causa válida.
     if id_causa:
+        requiere_auditoria, obs_origen, obs_destino = evaluar_auditoria_climatica(
+            db, vuelo.id_ruta, fecha_evento, evento.codigo_causa_original
+        )
         incidencia = IncidenciaVuelo(
             id_vuelo=vuelo.id_vuelo,
             id_evento_origen=evento.id_evento,
@@ -187,12 +199,15 @@ def procesar_cancelacion(db, vuelo, evento, id_causa, es_imputable, estado_cance
             tipo="CANCELACION",
             minutos_retraso=None,
             es_causa_principal=True,
-            requiere_auditoria=False,
+            requiere_auditoria=requiere_auditoria,
             estado_revision="PENDIENTE",
             fecha_clasificacion_utc=ahora_utc,
         )
         db.add(incidencia)
         db.flush()
+
+        if requiere_auditoria:
+            _registrar_auditoria_climatica(db, incidencia, obs_origen, obs_destino, ahora_utc)
 
         id_estado_cancelado = estado_cancelado.id_estado_vuelo if estado_cancelado else None
         for reubicacion in ofrecer_reubicaciones(db, vuelo, incidencia, id_estado_cancelado, ahora_utc):
@@ -200,6 +215,23 @@ def procesar_cancelacion(db, vuelo, evento, id_causa, es_imputable, estado_cance
                 notificaciones.append((ITINERARIO_CAMBIADO, {"id_reubicacion": reubicacion.id_reubicacion}))
 
     return notificaciones
+
+
+def _registrar_auditoria_climatica(db, incidencia, obs_origen, obs_destino, ahora_utc):
+    """RN-04: deja evidencia de la revisión climática de una causa técnica."""
+    db.add(
+        AuditoriaCausa(
+            id_incidencia=incidencia.id_incidencia,
+            id_observacion_clima_origen=obs_origen,
+            id_observacion_clima_destino=obs_destino,
+            motivo=(
+                "Causa técnica con condición climática adversa (viento > 50 km/h o "
+                "visibilidad < 1 km) en origen o destino dentro de una hora del evento."
+            ),
+            estado="PENDIENTE",
+            fecha_creacion_utc=ahora_utc,
+        )
+    )
 
 
 def procesar_retraso(db, vuelo, minutos_retraso, codigo_causa, es_imputable, fecha_evento, ahora_utc):

@@ -8,12 +8,18 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BUCKET = os.getenv("S3_BUCKET_BRONZE", "vueladata-datalake-bronze")
 AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")  # Útil para LocalStack
 
-# Inicialización segura de cliente S3
-boto3_kwargs = {"region_name": AWS_REGION}
-if AWS_ENDPOINT_URL:
-    boto3_kwargs["endpoint_url"] = AWS_ENDPOINT_URL
+# Inicialización segura y diferida del cliente S3 (no contacta AWS al importar).
+_s3_client = None
 
-s3_client = boto3.client("s3", **boto3_kwargs)
+
+def _cliente_s3():
+    global _s3_client
+    if _s3_client is None:
+        boto3_kwargs = {"region_name": AWS_REGION}
+        if AWS_ENDPOINT_URL:
+            boto3_kwargs["endpoint_url"] = AWS_ENDPOINT_URL
+        _s3_client = boto3.client("s3", **boto3_kwargs)
+    return _s3_client
 
 def subir_lote(mensajes: list, tipo: str = "eventos_oooi") -> str:
     """
@@ -35,7 +41,7 @@ def subir_lote(mensajes: list, tipo: str = "eventos_oooi") -> str:
     contenido = json.dumps(mensajes, ensure_ascii=False, default=str, indent=2)
 
     try:
-        s3_client.put_object(
+        _cliente_s3().put_object(
             Bucket=BUCKET,
             Key=clave,
             Body=contenido.encode("utf-8"),

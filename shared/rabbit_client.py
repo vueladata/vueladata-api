@@ -11,8 +11,13 @@ def conectar_rabbitmq(max_intentos: int = 10, espera: int = 3) -> pika.BlockingC
     Establece conexión robusta con RabbitMQ usando reintentos exponenciales/lineales.
     Reutilizable por ambos workers (RDS y Lake).
     """
-    user = os.getenv("RABBITMQ_USER", "admin")
-    password = os.getenv("RABBITMQ_PASS", "admin123")
+    user = os.getenv("RABBITMQ_USER")
+    password = os.getenv("RABBITMQ_PASS")
+    if not user or not password:
+        raise RuntimeError(
+            "Faltan RABBITMQ_USER y/o RABBITMQ_PASS. "
+            "En AWS se inyectan desde SSM (/vueladata/dev/rabbitmq/user y /password)."
+        )
     host = os.getenv("RABBITMQ_HOST", "localhost")
     port = int(os.getenv("RABBITMQ_PORT", "5672"))
 

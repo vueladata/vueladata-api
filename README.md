@@ -6,7 +6,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![uv](https://img.shields.io/badge/Package_Manager-uv-blueviolet.svg)](https://github.com/astral-sh/uv)
-[![Tests](<https://img.shields.io/badge/Tests-13%20Passed-brightgreen.svg>)]()
+[![Tests](<https://img.shields.io/badge/Tests-88%20Passed-brightgreen.svg>)]()
 
 Servicio web operacional REST perteneciente a la plataforma de datos de la aerolínea regional **VuelaData**. Este microservicio corresponde a la **Fuente F7**, encargada de la simulación de la pasarela de pagos asíncrona, el registro de incidencias y el cálculo y gestión de compensaciones económicas a pasajeros afectados por retrasos o cancelaciones.
 
@@ -171,6 +171,11 @@ Cobertura de pruebas:
 | ------------------------ | :--------: | ------------------------------- | ---------------------------------------- | :-----------------------: |
 | **Health**         |  `GET`  | `/health`                     | Estado del contenedor de la API          |          `200`          |
 | **Health**         |  `GET`  | `/health/db`                  | Conectividad contra PostgreSQL           |     `200`, `503`     |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}`             | Perfil del pasajero autenticado (RF-06)  | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/itinerarios` | Reservas, vuelos, conexiones y reubicaciones | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/reservas`    | Alias de `/itinerarios`                  | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/compensaciones` | Compensaciones, pagos y notificaciones propias | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/reservas/{codigo}/estado`   | Estado consolidado de una reserva propia | `200`, `401`, `403`, `404` |
 | **Causas**         |  `GET`  | `/causas/`                    | Listar catálogo de causas operacionales |          `200`          |
 | **Causas**         |  `POST`  | `/causas/`                    | Registrar nueva causa (RN-03)            | `201`, `400`, `422` |
 | **Causas**         |  `GET`  | `/causas/{id}`                | Consultar causa por identificador        |     `200`, `404`     |

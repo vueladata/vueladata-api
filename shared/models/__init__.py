@@ -17,6 +17,7 @@ from shared.models.conexion_itinerario import ConexionItinerario
 from shared.models.tiempo_minimo_conexion import TiempoMinimoConexion
 from shared.models.evaluacion_conexion import EvaluacionConexion
 from shared.models.reubicacion import Reubicacion
+from shared.models.auditoria_causa import AuditoriaCausa
 
 __all__ = [
     "Base",
@@ -38,4 +39,5 @@ __all__ = [
     "TiempoMinimoConexion",
     "EvaluacionConexion",
     "Reubicacion",
+    "AuditoriaCausa",
 ]

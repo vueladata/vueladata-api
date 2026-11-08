@@ -8,6 +8,7 @@ from app.routers import (
     compensaciones_router,
     eventos_pago_router,
     pagos_router,
+    pasajeros_router,
     reglas_compensacion_router,
 )
 
@@ -15,6 +16,13 @@ tags_metadata = [
     {
         "name": "Health",
         "description": "Verificación del estado del servicio y conectividad con PostgreSQL.",
+    },
+    {
+        "name": "Pasajeros",
+        "description": (
+            "Consultas del pasajero sobre sus propias reservas, itinerarios, estado de vuelo "
+            "y compensaciones (RF-06), con aislamiento por pasajero (RN-11)."
+        ),
     },
     {
         "name": "Causas",
@@ -49,6 +57,7 @@ app = FastAPI(
 )
 
 # Inclusión de routers del dominio F7
+app.include_router(pasajeros_router)
 app.include_router(causas_router)
 app.include_router(reglas_compensacion_router)
 app.include_router(compensaciones_router)
