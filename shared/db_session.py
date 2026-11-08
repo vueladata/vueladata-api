@@ -6,10 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://postgres:password@localhost:5433/vueladata_db"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "Falta DATABASE_URL. En AWS se inyecta desde SSM "
+        "(/vueladata/dev/database/url); en local, desde .env."
+    )
 
 # Engine con pool_pre_ping=True para reconectar si la BD se reinicia
 engine = create_engine(

@@ -21,7 +21,7 @@
       "secrets": [
         {"name": "RABBITMQ_USER", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/user"},
         {"name": "RABBITMQ_PASS", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/rabbitmq/password"},
-        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database_url"},
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database/url"},
         {"name": "SMTP_USUARIO", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/smtp/usuario"},
         {"name": "SMTP_CLAVE", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/smtp/clave"}
       ],

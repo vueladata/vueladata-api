@@ -1,6 +1,51 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import BigInteger, SmallInteger, create_engine
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+import app.models  # registra todas las tablas del dominio F7
+from app.database import Base, get_db
 from app.main import app
+
+
+@compiles(BigInteger, "sqlite")
+def _bigint_como_integer(tipo, compilador, **kw):
+    return "INTEGER"
+
+
+@compiles(SmallInteger, "sqlite")
+def _smallint_como_integer(tipo, compilador, **kw):
+    return "INTEGER"
+
+
+@pytest.fixture(autouse=True)
+def base_sqlite():
+    """CRUD aislado en SQLite: no requiere PostgreSQL para correr la suite."""
+    motor = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        execution_options={"schema_translate_map": {"vueladata": None}},
+    )
+    Base.metadata.create_all(motor)
+    Session = sessionmaker(bind=motor)
+
+    def override_get_db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield motor
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(motor)
+
 
 client = TestClient(app)
 

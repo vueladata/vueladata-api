@@ -1,7 +1,11 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.models.base import Base
+
+if TYPE_CHECKING:
+    from shared.models.vuelo import Vuelo
 
 
 class Reubicacion(Base):
@@ -15,3 +19,10 @@ class Reubicacion(Base):
     estado: Mapped[str] = mapped_column(String(30))
     fecha_oferta_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fecha_respuesta_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Relación de lectura hacia el vuelo alternativo propuesto (RNF-04).
+    vuelo_propuesto: Mapped["Vuelo | None"] = relationship(
+        "Vuelo",
+        primaryjoin="foreign(Reubicacion.id_vuelo_propuesto) == Vuelo.id_vuelo",
+        viewonly=True,
+    )

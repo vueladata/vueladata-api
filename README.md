@@ -6,7 +6,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![uv](https://img.shields.io/badge/Package_Manager-uv-blueviolet.svg)](https://github.com/astral-sh/uv)
-[![Tests](<https://img.shields.io/badge/Tests-39%20definidos-blue.svg>)]()
+[![Tests](<https://img.shields.io/badge/Tests-88%20Passed-brightgreen.svg>)]()
 
 Servicio web operacional REST perteneciente a la plataforma de datos de la aerolínea regional **VuelaData**. Este microservicio corresponde a la **Fuente F7**, encargada de la simulación de la pasarela de pagos asíncrona, el registro de incidencias y la gestión de compensaciones económicas a pasajeros.
 
@@ -92,7 +92,41 @@ Para ejecutar la suite de pruebas unitarias y de integración (asegúrate de que
 uv run pytest -v
 ```
 
-Cobertura garantizada para contratos OpenAPI, ciclo CRUD completo, esquemas Pydantic estrictos, lógica de `worker_rds` (retrasos, cancelaciones) y plantillas en `worker_notificaciones`.
+Cobertura de pruebas:
+
+* ✅ Contratos de documentación OpenAPI autogenerada expuestos.
+* ✅ Ciclo de vida CRUD completo (Crear, Consultar, Actualizar y Eliminar).
+* ✅ Respuestas de error esperadas (`404 Not Found` en identificadores inexistentes).
+* ✅ Rechazo automático de tipos de datos incorrectos (`422 Unprocessable Entity`).
+* ✅ Rechazo de registros duplicados por restricciones de unicidad (`400 Bad Request`).
+* ✅ Validación estricta de esquemas antes de tocar la base de datos relacional.
+
+---
+
+## 📌 Endpoints Principales
+
+| Recurso                  |  Método  | Endpoint                        | Descripción                             |       Códigos HTTP       |
+| ------------------------ | :--------: | ------------------------------- | ---------------------------------------- | :-----------------------: |
+| **Health**         |  `GET`  | `/health`                     | Estado del contenedor de la API          |          `200`          |
+| **Health**         |  `GET`  | `/health/db`                  | Conectividad contra PostgreSQL           |     `200`, `503`     |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}`             | Perfil del pasajero autenticado (RF-06)  | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/itinerarios` | Reservas, vuelos, conexiones y reubicaciones | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/reservas`    | Alias de `/itinerarios`                  | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/pasajeros/{id}/compensaciones` | Compensaciones, pagos y notificaciones propias | `200`, `401`, `403`, `404` |
+| **Pasajeros**      |  `GET`  | `/reservas/{codigo}/estado`   | Estado consolidado de una reserva propia | `200`, `401`, `403`, `404` |
+| **Causas**         |  `GET`  | `/causas/`                    | Listar catálogo de causas operacionales |          `200`          |
+| **Causas**         |  `POST`  | `/causas/`                    | Registrar nueva causa (RN-03)            | `201`, `400`, `422` |
+| **Causas**         |  `GET`  | `/causas/{id}`                | Consultar causa por identificador        |     `200`, `404`     |
+| **Causas**         | `PATCH` | `/causas/{id}`                | Actualización parcial de causa          | `200`, `404`, `400` |
+| **Causas**         | `DELETE` | `/causas/{id}`                | Eliminar causa                           |     `204`, `404`     |
+| **Reglas**         |  `GET`  | `/reglas-compensacion/`       | Listar reglas y porcentajes (RN-05)      |          `200`          |
+| **Reglas**         |  `POST`  | `/reglas-compensacion/`       | Crear nueva regla de compensación       |     `201`, `422`     |
+| **Compensaciones** |  `GET`  | `/compensaciones/`            | Consultar compensaciones económicas     |          `200`          |
+| **Compensaciones** |  `POST`  | `/compensaciones/`            | Generar compensación para un segmento   | `201`, `400`, `422` |
+| **Pagos**          |  `GET`  | `/pagos/`                     | Listar solicitudes de desembolso F7      |          `200`          |
+| **Pagos**          |  `POST`  | `/pagos/`                     | Iniciar pago con clave de idempotencia   | `201`, `400`, `404` |
+| **Pagos**          |  `GET`  | `/pagos/idempotencia/{clave}` | Consultar pago por clave idempotente     |     `200`, `404`     |
+| **Eventos Pago**   |  `POST`  | `/eventos-pago/`              | Webhook asíncrono de confirmación F7   | `201`, `400`, `404` |
 
 ---
 

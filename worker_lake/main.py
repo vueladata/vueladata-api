@@ -20,7 +20,10 @@ _ultimo_flush = time.time()
 def _realizar_flush(channel):
     """
     Vacía el buffer hacia S3 Bronze y envía ACK a todos los mensajes confirmados.
-    Se ejecuta de forma segura en el hilo del channel de RabbitMQ.
+
+    El ACK se envía SOLO después de que la escritura (S3 o fallback local) terminó bien.
+    Si la escritura falla, el lote sigue en memoria y los mensajes quedan sin ACK para
+    que RabbitMQ los reentregue.
     """
     global _buffer, _tags, _ultimo_flush
     with _lock:
@@ -29,19 +32,28 @@ def _realizar_flush(channel):
             return
         lote_actual = list(_buffer)
         tags_actuales = list(_tags)
-        _buffer.clear()
-        _tags.clear()
-        _ultimo_flush = time.time()
 
     try:
         subir_lote(lote_actual)
-        for tag in tags_actuales:
-            try:
-                channel.basic_ack(delivery_tag=tag)
-            except Exception as e:
-                print(f"[Worker Lake] Error al confirmar tag {tag}: {e}", flush=True)
     except Exception as e:
+        # No tocamos el buffer: los mensajes deben reintentarse y no se pierden.
+        with _lock:
+            _ultimo_flush = time.time()
         print(f"[Worker Lake] ❌ Falló la subida a S3: {e}. Los mensajes permanecen sin ACK.", flush=True)
+        return False
+
+    # La escritura quedó confirmada: recién ahora retiramos el lote y hacemos ACK.
+    with _lock:
+        del _buffer[: len(lote_actual)]
+        del _tags[: len(tags_actuales)]
+        _ultimo_flush = time.time()
+
+    for tag in tags_actuales:
+        try:
+            channel.basic_ack(delivery_tag=tag)
+        except Exception as e:
+            print(f"[Worker Lake] Error al confirmar tag {tag}: {e}", flush=True)
+    return True
 
 def _temporizador_flush(connection, channel):
     """

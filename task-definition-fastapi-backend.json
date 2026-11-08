@@ -22,7 +22,7 @@
         {"name": "PORT", "value": "8000"}
       ],
       "secrets": [
-        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database_url"}
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-1:<ACCOUNT_ID>:parameter/vueladata/dev/database/url"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
