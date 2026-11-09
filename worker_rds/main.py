@@ -29,7 +29,13 @@ def callback(ch, method, properties, body):
             return
 
         # Enrutamiento dinámico según el tipo de mensaje
-        if "codigo_evento" in payload or "id_externo_evento" in payload:
+        if payload.get("event_type") == "opensky_adsb":
+            resultado = procesar_posicion_aeronave(payload, db)
+            tipo_msg = "POSICION_OPENSKY"
+        elif payload.get("event_type") == "clima":
+            resultado = procesar_observacion_clima(payload, db)
+            tipo_msg = "CLIMA_OPENMETEO"
+        elif "codigo_evento" in payload or "id_externo_evento" in payload:
             # Las notificaciones (cancelación, retraso, conexión, reubicación) salen por el mismo canal.
             def publicar(routing_key, datos):
                 publicar_notificacion(ch, routing_key, datos)
@@ -47,6 +53,13 @@ def callback(ch, method, properties, body):
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
+        if resultado == "sin_catalogo":
+            # Preserve the event for replay after the fleet/airport catalog is completed.
+            # Publisher confirms are enabled in main(); only ACK after confirmed transfer.
+            queue = "q.rds_unresolved"
+            ch.queue_declare(queue=queue, durable=True)
+            ch.basic_publish(exchange='', routing_key=queue, mandatory=True,
+                             body=body, properties=pika.BasicProperties(delivery_mode=2))
         print(f"[Worker RDS] [{resultado.upper()}] Tipo: {tipo_msg} | Tag: {method.delivery_tag} | Cola: {method.routing_key}", flush=True)
         # ACK confirma que el mensaje se procesó (o descartó intencionalmente)
         ch.basic_ack(delivery_tag=method.delivery_tag)

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from shared.models.observacion_clima import ObservacionClima
+from shared.models.aeropuerto import Aeropuerto
 from worker_rds.business_rules import evaluar_condiciones_adversas
 
 def procesar_observacion_clima(body: bytes | str | dict, db: Session) -> str:
@@ -25,6 +26,12 @@ def procesar_observacion_clima(body: bytes | str | dict, db: Session) -> str:
 
     if not id_aeropuerto or not fecha_obs_raw:
         return "invalido"
+
+    if not str(id_aeropuerto).isdigit():
+        airport = db.query(Aeropuerto).filter_by(codigo_iata=str(data.get("codigo_iata") or id_aeropuerto).upper()).first()
+        if airport is None:
+            return "sin_catalogo"
+        id_aeropuerto = airport.id_aeropuerto
 
     try:
         fecha_obs = datetime.fromisoformat(str(fecha_obs_raw))

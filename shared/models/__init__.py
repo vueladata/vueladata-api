@@ -1,4 +1,5 @@
 from shared.models.base import Base
+from shared.models.aeronave import Aeronave
 from shared.models.evento_operacional import EventoOperacional
 from shared.models.vuelo import Vuelo
 from shared.models.posicion_aeronave import PosicionAeronave
@@ -21,6 +22,7 @@ from shared.models.auditoria_causa import AuditoriaCausa
 
 __all__ = [
     "Base",
+    "Aeronave",
     "EventoOperacional",
     "Vuelo",
     "PosicionAeronave",

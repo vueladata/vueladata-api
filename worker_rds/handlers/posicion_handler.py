@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from shared.models.posicion_aeronave import PosicionAeronave
+from shared.models.aeronave import Aeronave
+from sqlalchemy import func
 
 def procesar_posicion_aeronave(body: bytes | str | dict, db: Session) -> str:
     """
@@ -21,7 +23,14 @@ def procesar_posicion_aeronave(body: bytes | str | dict, db: Session) -> str:
     id_externo = data.get("id_externo_posicion")
     lat = data.get("latitud")
     lon = data.get("longitud")
-    id_aeronave = data.get("id_aeronave", 1)  # Fallback a 1 si no está resuelto
+    id_aeronave = data.get("id_aeronave")
+    if id_aeronave is None:
+        code = data.get("codigo_icao24")
+        aircraft = (db.query(Aeronave).filter(func.lower(Aeronave.codigo_icao24) == str(code).lower()).first()
+                    if code else None)
+        if aircraft is None:
+            return "sin_catalogo"
+        id_aeronave = aircraft.id_aeronave
 
     if not id_externo or lat is None or lon is None:
         return "invalido"
